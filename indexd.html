@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>遲到與請假紀錄小幫手</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #f4f7f6; 
+            color: #333; 
+            max-width: 500px; 
+            margin: 0 auto; 
+            padding: 20px; 
+        }
+        h1 { text-align: center; color: #2c3e50; }
+        .card { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+            margin-bottom: 20px; 
+        }
+        .text-center { text-align: center; }
+        .quota-display { 
+            font-size: 32px; 
+            font-weight: bold; 
+            color: #27ae60; 
+            margin: 10px 0;
+        }
+        .danger { color: #e74c3c; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, select, button { 
+            width: 100%; 
+            padding: 10px; 
+            border: 1px solid #ccc; 
+            border-radius: 4px; 
+            box-sizing: border-box; 
+            font-size: 16px;
+        }
+        button { 
+            background-color: #3498db; 
+            color: white; 
+            border: none; 
+            cursor: pointer; 
+            margin-top: 10px; 
+            font-weight: bold;
+        }
+        button:hover { background-color: #2980b9; }
+        .record-item { 
+            border-bottom: 1px solid #eee; 
+            padding: 12px 0; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+        }
+        .record-item:last-child { border-bottom: none; }
+        .badge {
+            background-color: #95a5a6;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-left: 8px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>📝 考勤紀錄小幫手</h1>
+
+    <div class="card text-center">
+        <h2>本月剩餘遲到額度</h2>
+        <div id="remainingQuota" class="quota-display">180 分鐘</div>
+    </div>
+
+    <div class="card">
+        <div class="form-group">
+            <label for="dateInput">日期</label>
+            <input type="date" id="dateInput">
+        </div>
+        <div class="form-group">
+            <label for="lateMinutes">遲到分鐘數</label>
+            <input type="number" id="lateMinutes" min="0" placeholder="例如：15（未遲到請填 0）">
+        </div>
+        <div class="form-group">
+            <label for="leaveType">假別</label>
+            <select id="leaveType">
+                <option value="無">無</option>
+                <option value="特休">特休</option>
+                <option value="病假">病假</option>
+                <option value="事假">事假</option>
+                <option value="生理假">生理假</option>
+            </select>
+        </div>
+        <button onclick="saveRecord()">新增 / 更新紀錄</button>
+    </div>
+
+    <div class="card">
+        <h3>本月紀錄清單</h3>
+        <div id="recordsContainer"></div>
+    </div>
+
+    <script>
+        const MAX_QUOTA = 180;
+        // 從瀏覽器本地端讀取紀錄
+        let records = JSON.parse(localStorage.getItem('attendanceRecords')) || [];
+
+        // 預設日期為今天
+        document.getElementById('dateInput').valueAsDate = new Date();
+
+        function saveRecord() {
+            const date = document.getElementById('dateInput').value;
+            const minutes = parseInt(document.getElementById('lateMinutes').value) || 0;
+            const leaveType = document.getElementById('leaveType').value;
+
+            if (!date) {
+                alert('請選擇日期！');
+                return;
+            }
+
+            // 檢查該日期是否已有紀錄，若有則覆蓋更新
+            const existingIndex = records.findIndex(r => r.date === date);
+            if (existingIndex > -1) {
+                records[existingIndex] = { date, minutes, leaveType };
+            } else {
+                records.push({ date, minutes, leaveType });
+            }
+
+            // 依照日期由新到舊排序
+            records.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            // 存回瀏覽器
+            localStorage.setItem('attendanceRecords', JSON.stringify(records));
+            updateUI();
+        }
+
+        function updateUI() {
+            const container = document.getElementById('recordsContainer');
+            container.innerHTML = '';
+            
+            let totalLateThisMonth = 0;
+            // 取得當前月份 (YYYY-MM 格式)
+            const currentMonth = new Date().toISOString().slice(0, 7); 
+
+            records.forEach(record => {
+                // 只統計與顯示當月份的資料
+                if (record.date.startsWith(currentMonth)) {
+                    totalLateThisMonth += record.minutes;
+                    
+                    const div = document.createElement('div');
+                    div.className = 'record-item';
+                    
+                    let leaveBadge = record.leaveType !== '無' ? `<span class="badge">${record.leaveType}</span>` : '';
+                    let lateText = record.minutes > 0 ? `<span class="danger">遲到 ${record.minutes} 分鐘</span>` : '準時';
+
+                    div.innerHTML = `
+                        <div>
+                            <strong>${record.date}</strong> ${leaveBadge}
+                        </div>
+                        <div>${lateText}</div>
+                    `;
+                    container.appendChild(div);
+                }
+            });
+
+            // 更新剩餘額度
+            const remaining = MAX_QUOTA - totalLateThisMonth;
+            const quotaDisplay = document.getElementById('remainingQuota');
+            quotaDisplay.textContent = `${remaining} 分鐘`;
+            
+            // 若額度透支，字體變紅色
+            if (remaining < 0) {
+                quotaDisplay.classList.add('danger');
+            } else {
+                quotaDisplay.classList.remove('danger');
+            }
+        }
+
+        // 初始化畫面
+        updateUI();
+    </script>
+
+</body>
+</html>
